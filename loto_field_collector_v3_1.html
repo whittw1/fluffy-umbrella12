@@ -1,0 +1,1802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-title" content="LOTO Collector">
+<link rel="manifest" href="manifest.json">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<title>LOTO Field Collector v3.0</title>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      console.log('SW registered:', reg.scope);
+    }).catch(err => {
+      console.log('SW registration failed:', err);
+    });
+  });
+}
+</script>
+<style>
+  :root {
+    --bg: #1a1f2e;
+    --card: #232a3b;
+    --card-alt: #2a3248;
+    --border: #3a4460;
+    --accent: #4a90d9;
+    --accent-hover: #5ba0e9;
+    --danger: #d94a4a;
+    --danger-hover: #e95b5b;
+    --success: #4ab86a;
+    --success-hover: #5bc87a;
+    --warning: #d9a84a;
+    --text: #e8eaf0;
+    --text-dim: #8892a8;
+    --text-label: #b0b8cc;
+    --input-bg: #1e2538;
+    --photo-bg: #161b28;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.5px; }
+  .header-actions { display: flex; gap: 8px; }
+  .header-badge {
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 8px;
+  }
+
+  .btn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    color: white;
+  }
+  .btn-accent { background: var(--accent); }
+  .btn-accent:hover { background: var(--accent-hover); }
+  .btn-success { background: var(--success); }
+  .btn-success:hover { background: var(--success-hover); }
+  .btn-danger { background: var(--danger); }
+  .btn-danger:hover { background: var(--danger-hover); }
+  .btn-warning { background: var(--warning); color: #1a1f2e; }
+  .btn-outline {
+    background: transparent;
+    border: 1.5px solid var(--border);
+    color: var(--text-dim);
+  }
+  .btn-outline:hover { border-color: var(--text-dim); color: var(--text); }
+  .btn-sm { padding: 7px 14px; font-size: 13px; }
+  .btn-lg { padding: 14px 28px; font-size: 17px; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+
+  /* Saved equipment list panel */
+  .saved-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .saved-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: var(--card-alt);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .saved-panel-header:hover { background: #313a52; }
+  .saved-panel-header h2 {
+    font-size: 14px;
+    color: var(--success);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .saved-count-badge {
+    background: var(--success);
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 9px;
+    border-radius: 10px;
+  }
+  .saved-panel-body { padding: 0; }
+  .saved-panel-body.collapsed { display: none; }
+  .saved-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .saved-item:last-child { border-bottom: none; }
+  .saved-item-info { flex: 1; }
+  .saved-item-name { font-size: 14px; font-weight: 600; }
+  .saved-item-detail { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .saved-item-actions { display: flex; gap: 6px; }
+  .saved-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+
+  /* Equipment section */
+  .equipment-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .equipment-section h2 {
+    font-size: 15px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-grid.three-col { grid-template-columns: 1fr 1fr 1fr; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group.full-width { grid-column: 1 / -1; }
+  .form-group label {
+    font-size: 12px; font-weight: 600; color: var(--text-label);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .form-group select, .form-group input {
+    padding: 12px 14px; background: var(--input-bg);
+    border: 1.5px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 16px; font-family: inherit;
+    -webkit-appearance: none; appearance: none;
+  }
+  .form-group select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238892a8' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+  }
+  .form-group select:focus, .form-group input:focus {
+    outline: none; border-color: var(--accent);
+  }
+
+  .photo-row { display: flex; gap: 12px; margin-top: 12px; }
+  .photo-slot { flex: 1; text-align: center; }
+  .photo-slot label {
+    display: block; font-size: 11px; font-weight: 600; color: var(--text-label);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .photo-capture {
+    width: 100%; aspect-ratio: 4/3; background: var(--photo-bg);
+    border: 2px dashed var(--border); border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; position: relative; overflow: hidden; transition: border-color 0.15s;
+  }
+  .photo-capture:hover { border-color: var(--accent); }
+  .photo-capture.has-photo { border-style: solid; border-color: var(--success); }
+  .photo-capture img { width: 100%; height: 100%; object-fit: cover; position: absolute; }
+  .photo-capture .placeholder {
+    color: var(--text-dim); font-size: 13px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .photo-capture .placeholder svg { width: 28px; height: 28px; opacity: 0.5; }
+  .photo-capture .retake-badge {
+    position: absolute; bottom: 6px; right: 6px;
+    background: rgba(0,0,0,0.7); color: white; font-size: 11px;
+    padding: 3px 8px; border-radius: 4px; font-weight: 600;
+  }
+
+  .source-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 16px; overflow: hidden;
+  }
+  .source-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; background: var(--card-alt); border-bottom: 1px solid var(--border);
+  }
+  .source-card-header h3 { font-size: 15px; font-weight: 600; }
+  .source-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    font-size: 13px; font-weight: 700; margin-right: 10px;
+  }
+  .source-electrical { background: #d94a4a33; color: #ff6b6b; border: 1.5px solid #d94a4a; }
+  .source-steam { background: #d98a4a33; color: #ffaa6b; border: 1.5px solid #d98a4a; }
+  .source-water { background: #4ab8a833; color: #6bddcc; border: 1.5px solid #4ab8a8; }
+  .source-gas { background: #d9d94a33; color: #eeee6b; border: 1.5px solid #d9d94a; }
+  .source-default { background: #4a90d933; color: #6bb0ff; border: 1.5px solid #4a90d9; }
+
+  .source-card-body { padding: 16px 20px; }
+  .source-card .photo-section { display: flex; gap: 12px; align-items: flex-start; margin-top: 14px; }
+  .source-card .photo-section .photo-capture { width: 140px; min-width: 140px; aspect-ratio: 4/3; }
+
+  .source-summary {
+    padding: 14px 20px; display: flex; align-items: center; gap: 14px; cursor: pointer;
+  }
+  .source-summary:hover { background: var(--card-alt); }
+  .source-summary-text { flex: 1; font-size: 14px; color: var(--text-dim); }
+  .source-summary-text strong { color: var(--text); }
+  .source-summary-photo { width: 50px; height: 38px; border-radius: 4px; object-fit: cover; }
+  .source-summary .edit-icon { color: var(--text-dim); font-size: 13px; }
+
+  .add-source-btn {
+    width: 100%; padding: 18px; background: var(--card);
+    border: 2px dashed var(--border); border-radius: 12px;
+    color: var(--accent); font-size: 16px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; margin-bottom: 20px;
+  }
+  .add-source-btn:hover { border-color: var(--accent); background: var(--card-alt); }
+
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--card); border-top: 1px solid var(--border);
+    padding: 12px 20px; display: flex; justify-content: space-between;
+    align-items: center; z-index: 100;
+  }
+  .bottom-bar .source-count { font-size: 13px; color: var(--text-dim); }
+  .bottom-bar .source-count strong { color: var(--text); }
+  .bottom-spacer { height: 80px; }
+
+  input[type="file"] { display: none; }
+
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+    background: var(--success); color: white; padding: 12px 24px;
+    border-radius: 10px; font-weight: 600; font-size: 14px;
+    z-index: 300; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .toast.toast-warning { background: var(--warning); color: #1a1f2e; }
+
+  .auto-badge {
+    background: #4a90d9; color: white; font-size: 10px;
+    padding: 2px 6px; border-radius: 3px; margin-left: 6px; font-weight: 700;
+  }
+
+  /* Confirm dialog */
+  .dialog-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .dialog {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; width: 100%; max-width: 400px; padding: 24px;
+  }
+  .dialog h3 { font-size: 18px; margin-bottom: 12px; }
+  .dialog p { font-size: 14px; color: var(--text-dim); margin-bottom: 20px; line-height: 1.5; }
+  .dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+  @media (max-width: 600px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .form-grid.three-col { grid-template-columns: 1fr 1fr; }
+    .photo-row { flex-wrap: wrap; }
+    .photo-slot { min-width: 45%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;">
+    <h1>LOTO Collector</h1>
+    <span class="header-badge" id="headerBadge" style="display:none;">0 saved</span>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-outline btn-sm" onclick="showSavedList()">&#128203; List</button>
+    <button class="btn btn-accent btn-sm" onclick="exportAll()">Export All</button>
+  </div>
+</div>
+
+<div class="container">
+  <!-- Saved Equipment Panel -->
+  <div class="saved-panel" id="savedPanel">
+    <div class="saved-panel-header" onclick="toggleSavedPanel()">
+      <h2>&#9989; Saved Equipment <span class="saved-count-badge" id="savedCountBadge">0</span></h2>
+      <span id="savedToggle" style="color:var(--text-dim);font-size:13px;">&#9660; Show</span>
+    </div>
+    <div class="saved-panel-body collapsed" id="savedPanelBody"></div>
+  </div>
+
+  <!-- Current Equipment Form -->
+  <div class="equipment-section">
+    <h2>&#128221; Current Equipment</h2>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Equipment Type</label>
+        <select id="equipType" onchange="handleEquipTypeChange()"><option value="">-- Select --</option></select>
+      </div>
+      <div class="form-group" id="customEquipTypeGroup" style="display:none;">
+        <label>Custom Equipment Type</label>
+        <input type="text" id="equipTypeCustom" placeholder="Enter new equipment type" oninput="autoSaveCurrent()">
+      </div>
+      <div class="form-group">
+        <label>Equipment ID / Name</label>
+        <input type="text" id="equipName" placeholder="e.g. AHU-3000">
+      </div>
+      <div class="form-group">
+        <label>Building</label>
+        <input type="text" id="equipBuilding" placeholder="e.g. Building 1">
+      </div>
+      <div class="form-group">
+        <label>Location / Room</label>
+        <input type="text" id="equipRoom" placeholder="e.g. Room 20">
+      </div>
+      <div class="form-group">
+        <label>Template</label>
+        <select id="equipTemplate" onchange="handleTemplateChange()">
+          <option value="">-- Select --</option>
+        </select>
+      </div>
+      <div class="form-group" id="customTemplateGroup" style="display:none;">
+        <label>Custom Template Name</label>
+        <input type="text" id="equipTemplateCustom" placeholder="Enter new template name">
+      </div>
+      <div class="form-group">
+        <label>Tied To Equipment</label>
+        <select id="equipTiedTo" onchange="handleTiedToChange()">
+          <option value="">-- Select --</option>
+        </select>
+      </div>
+      <div class="form-group" id="tiedToNameGroup" style="display:none;">
+        <label>Equipment Name to Shut Down</label>
+        <input type="text" id="equipTiedToName" placeholder="e.g. Boiler 1, AHU-3000" oninput="autoSaveCurrent()">
+      </div>
+    </div>
+
+    <div class="photo-row">
+      <div class="photo-slot">
+        <label>Main Photo</label>
+        <div class="photo-capture" onclick="takePhoto('equip_main')" id="photo_equip_main">
+          <span class="placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M9 2h6l1 3H8l1-3z"/></svg>
+            Tap to capture
+          </span>
+        </div>
+        <input type="file" accept="image/*" capture="environment" id="file_equip_main" onchange="handlePhoto(this, 'equip_main')">
+      </div>
+      <div class="photo-slot">
+        <label>Data Plate</label>
+        <div class="photo-capture" onclick="takePhoto('equip_dataplate')" id="photo_equip_dataplate">
+          <span class="placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M9 2h6l1 3H8l1-3z"/></svg>
+            Tap to capture
+          </span>
+        </div>
+        <input type="file" accept="image/*" capture="environment" id="file_equip_dataplate" onchange="handlePhoto(this, 'equip_dataplate')">
+      </div>
+      <div class="photo-slot">
+        <label>EE Number</label>
+        <div class="photo-capture" onclick="takePhoto('equip_ee')" id="photo_equip_ee">
+          <span class="placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M9 2h6l1 3H8l1-3z"/></svg>
+            Tap to capture
+          </span>
+        </div>
+        <input type="file" accept="image/*" capture="environment" id="file_equip_ee" onchange="handlePhoto(this, 'equip_ee')">
+      </div>
+    </div>
+  </div>
+
+  <!-- Energy Sources -->
+  <div id="sourcesContainer"></div>
+
+  <button class="add-source-btn" onclick="addSource()">+ Add Energy Source</button>
+
+  <!-- Notes -->
+  <div class="equipment-section" style="margin-bottom:20px;">
+    <h2>&#128221; Notes</h2>
+    <textarea id="equipNotes" rows="3" placeholder="Any additional notes about this equipment..." oninput="autoSaveCurrent()"
+      style="width:100%;padding:12px 14px;background:var(--input-bg);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-size:15px;font-family:inherit;resize:vertical;"></textarea>
+  </div>
+
+  <div class="bottom-spacer"></div>
+</div>
+
+<div class="bottom-bar">
+  <div style="display:flex;flex-direction:column;gap:2px;">
+    <div class="source-count">
+      <strong id="sourceCountNum">0</strong> sources
+    </div>
+    <div id="storageIndicator" style="font-size:11px;color:var(--text-dim);display:none;">
+      &#128190; <span id="storageUsed">0</span>% storage used
+    </div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <button class="btn btn-warning btn-sm" onclick="saveAndNew()">Save &amp; New &#9654;</button>
+    <button class="btn btn-success btn-sm" onclick="exportAll()">Export All</button>
+  </div>
+</div>
+
+<div class="toast" id="toast">Saved!</div>
+
+<script>
+// ============================================================================
+// DATA
+// ============================================================================
+const DATA = {
+  equipmentTypes: [
+    "Air Handler","Mini Split","Condensing Unit","Exhaust Fan","Heating HW Pump",
+    "CHW Pump","Domestic HW Pump","Domestic Water Pump","Heat Exchanger",
+    "Condensate Return Unit","Condensate Pump","Unit Heater",
+    "Domestic Water Heater","Air Compressor","Air Dryer","Vacuum Pump","ATS",
+    "Generator","Day Tank","Elevator","Cooling Tower","Chemical Feed Pump","Dishwasher",
+    "Chiller","Refrigerator","Boiler","Steam PRV Station",
+    "** New Equipment Type **"
+  ],
+  energySources: [
+    "Electrical 120V","Electrical 208V","Electrical 240V","Electrical 480V","Electrical 4160V",
+    "LPS 10 PSI","MPS 50 PSI","HPS 100 PSI",
+    "Condensate In/Out","Condensate In","Condensate Out",
+    "HHW In/Out","HHW In","HHW Out",
+    "CHW In/Out","CHW In","CHW Out",
+    "DHW In/Out","DHW In","DHW Out",
+    "DW In/Out","DW In","DW Out",
+    "CA In","CA Out",
+    "Natural Gas","Propane",
+    "Condenser Water In","Condenser Water Out",
+    "Feedwater In/Out","Feedwater In","Feedwater Out",
+    "Gravity/Potential","Chemical In","Chemical Out",
+    "Glycol HW In/Out","Glycol CHW In/Out","Kinetic",
+    "Thermal","Refrigerant","Hydraulic"
+  ],
+  deviceTypes: [
+    "Disconnect","VFD","Switch","Switch w/Padlock","Breaker","Breaker w/Padlock",
+    "Gate Valve","Gate Valve w/Cable","Ball Valve","Butterfly Valve","Butterfly w/Padlock",
+    "Ckt Setter - Universal Valve","Plug","Chain","Cable",
+    "Potential","Rotating","Hydraulic","Fuse"
+  ],
+  locations: [
+    "On Equipment","On Wall","Panel","MCC",
+    "Front of Equipment","Above Equipment","Below Equipment","Behind Equipment",
+    "Left of Equipment","Right of Equipment","In Ceiling",
+    "Front Left Corner of Equipment","Front Right Corner of Equipment",
+    "Back Left Corner of Equipment","Back Right Corner of Equipment",
+    "Front of","Above"
+  ],
+  verificationTypes: [
+    "Temp Only - Hot","Temp Only - CHW","Temp Only",
+    "GaugeOnly - Hot","GaugeOnly - CHW","GaugeOnly",
+    "Gauge/Drain - Hot","Gauge/Drain - CHW","Gauge/Drain",
+    "Drain Only - Hot","Drain Only - CHW","Drain Only",
+    "G/Tmp/Drain - Hot","G/Tmp/Drain - CHW",
+    "SW (On/Off)","SW (Hand/Off/Auto)","SW (H/O/A)",
+    "SW (Drive/Off/Bypass)","SW (VFD/Off/Bypass)","SW (Other)",
+    "Screen","Button (Start/Stop) - VFD","Button (Hand/Off/Auto) - VFD",
+    "Button (FWD/STOP) - VFD","Button (Start/Stop) - Retractable","Button (Other)",
+    "Controls","Meter","Rotating","Block"
+  ],
+  quantities: [1,2,3,4,5],
+  duplicateOptions: ["No","Yes"],
+  templates: [
+    "** New Template **",
+    "AHU - Steam","AHU - HHW","AHU - Steam, CHW, HHW",
+    "Chilled Water Pump","Heating Hot Water Pump","Standard Pump",
+    "Condensate Return Unit","Condensate Return Unit - Steam",
+    "Exhaust Fan","Water Heater - Steam","Water Heater - Gas",
+    "Unit Heater - Steam","Unit Heater - HHW",
+    "Air Compressor","Air Dryer","Vaccum Pump","Condensing Unit",
+    "Emergency Generator","Cooling Tower","Chiller","Refrigerator",
+    "Elevator - Traction","Elevator - Hydraulic",
+    "ATS - Generic","ASCO 7000","Non Byp","Kohler","Zenith",
+    "Standard Electrical","Heat Exchanger"
+  ],
+  tiedToOptions: ["Shut Down","Shut Down & LOTO"]
+};
+
+// Auto-fill defaults when energy source is selected
+const SOURCE_DEFAULTS = {
+  'Kinetic':            { device: 'Rotating',   location: 'On Equipment', verification: 'Rotating',  noPhoto: true },
+  'Gravity/Potential':  { device: 'Potential',   location: 'On Equipment', verification: 'Block',     noPhoto: true },
+  'Hydraulic':          { device: 'Hydraulic',   location: 'On Equipment', verification: 'GaugeOnly', noPhoto: true },
+};
+
+// Equipment-type auto-sources
+const EQUIPMENT_AUTO_SOURCES = {
+  'Elevator': [
+    { energySource: 'Gravity/Potential', deviceType: 'Potential', location: 'On Equipment', verification: 'Block', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'CHW Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Heating HW Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Domestic HW Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Domestic Water Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Condensate Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Chemical Feed Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Vacuum Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Exhaust Fan': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Air Handler': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Air Compressor': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Condensing Unit': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Unit Heater': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+};
+
+// ============================================================================
+// STATE
+// ============================================================================
+let sources = [];          // Current equipment's energy sources
+let photos = {};           // Current equipment's photos (keyed by slot id)
+let savedEquipment = [];   // Accumulated saved equipment entries
+let savedPanelOpen = false;
+
+// ============================================================================
+// INIT
+// ============================================================================
+function init() {
+  populateDropdown(document.getElementById('equipType'), DATA.equipmentTypes, 'Select Type');
+  populateDropdown(document.getElementById('equipTemplate'), DATA.templates, 'Select Template');
+  populateDropdown(document.getElementById('equipTiedTo'), DATA.tiedToOptions, 'Select');
+
+  // Open IndexedDB for photo storage (with iOS Safari diagnostics)
+  openPhotoDB().then(() => {
+    console.log('Photo DB ready (loto_photos_v3)');
+    // Quick test: can we actually write and read?
+    const testKey = '__idb_test__';
+    const testBuf = new ArrayBuffer(4);
+    savePhotoToDB(testKey, testBuf, 'test').then(() => {
+      return getPhotoFromDB(testKey);
+    }).then(result => {
+      if (result && result.data) {
+        console.log('IDB read/write test PASSED');
+        deletePhotoFromDB(testKey);
+      } else {
+        console.warn('IDB read/write test FAILED - data not retrieved. Fallback mode active.');
+        idbAvailable = false;
+      }
+    }).catch(e => {
+      console.warn('IDB read/write test ERROR - Fallback mode active.', e);
+      idbAvailable = false;
+    });
+  }).catch(e => {
+    console.warn('Photo DB unavailable - using localStorage fallback only.', e);
+    idbAvailable = false;
+  });
+
+  loadAll();
+  renderSavedPanel();
+  renderSources();
+  updateHeaderBadge();
+  checkStorage();
+}
+
+// Called by handleEquipTypeChange with the resolved equipment type
+function equipTypeChanged(equipType) {
+  // Auto-add standard energy sources
+  if (equipType && EQUIPMENT_AUTO_SOURCES[equipType]) {
+    const autoSources = EQUIPMENT_AUTO_SOURCES[equipType];
+    let added = 0;
+    for (const autoSrc of autoSources) {
+      const alreadyExists = sources.some(s => s.energySource === autoSrc.energySource && s.auto === true);
+      if (!alreadyExists) {
+        sources.push({ ...autoSrc, collapsed: true });
+        added++;
+      }
+    }
+    if (added) {
+      renderSources();
+      showToast(`Added ${added} standard source${added > 1 ? 's' : ''} for ${equipType}`);
+    }
+  }
+
+  // Auto-suggest template if there's only one match
+  if (equipType && EQUIPMENT_TEMPLATE_MAP[equipType]) {
+    const templates = EQUIPMENT_TEMPLATE_MAP[equipType];
+    if (templates.length === 1) {
+      document.getElementById('equipTemplate').value = templates[0];
+      handleTemplateChange();
+    }
+  }
+}
+
+// Map equipment types to likely templates (for auto-suggest)
+const EQUIPMENT_TEMPLATE_MAP = {
+  'Exhaust Fan': ['Exhaust Fan'],
+  'Air Compressor': ['Air Compressor'],
+  'Air Dryer': ['Air Dryer'],
+  'Cooling Tower': ['Cooling Tower'],
+  'Generator': ['Emergency Generator'],
+  'Chiller': ['Chiller'],
+  'Refrigerator': ['Refrigerator'],
+  'Condensing Unit': ['Condensing Unit'],
+  'Heat Exchanger': ['Heat Exchanger'],
+  'CHW Pump': ['Chilled Water Pump'],
+  'Heating HW Pump': ['Heating Hot Water Pump'],
+  // These have multiple options "” don't auto-select:
+  // 'Elevator': ['Elevator - Traction', 'Elevator - Hydraulic'],
+  // 'Air Handler': ['AHU - Steam', 'AHU - HHW', 'AHU - Steam, CHW, HHW'],
+};
+
+function handleTemplateChange() {
+  const val = document.getElementById('equipTemplate').value;
+  const customGroup = document.getElementById('customTemplateGroup');
+  if (val === '** New Template **') {
+    customGroup.style.display = 'flex';
+    document.getElementById('equipTemplateCustom').focus();
+  } else {
+    customGroup.style.display = 'none';
+    document.getElementById('equipTemplateCustom').value = '';
+  }
+
+  // Auto-add sources based on template selection
+  if (val && TEMPLATE_AUTO_SOURCES[val]) {
+    const autoSources = TEMPLATE_AUTO_SOURCES[val];
+    let added = 0;
+    for (const autoSrc of autoSources) {
+      const alreadyExists = sources.some(s => s.energySource === autoSrc.energySource && s.auto === true);
+      if (!alreadyExists) {
+        sources.push({ ...autoSrc, collapsed: true });
+        added++;
+      }
+    }
+    if (added) {
+      renderSources();
+      showToast(`Added ${added} standard source${added > 1 ? 's' : ''} for ${val}`);
+    }
+  }
+
+  autoSaveCurrent();
+}
+
+// Template-triggered auto-sources (mirrors EQUIPMENT_AUTO_SOURCES)
+const TEMPLATE_AUTO_SOURCES = {
+  // Kinetic for anything with a motor/fan/compressor
+  'AHU - Steam': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'AHU - HHW': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'AHU - Steam, CHW, HHW': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Exhaust Fan': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Air Compressor': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Condensing Unit': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Chilled Water Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Heating Hot Water Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Standard Pump': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Cooling Tower': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Chiller': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  // Elevator templates
+  'Elevator - Traction': [
+    { energySource: 'Gravity/Potential', deviceType: 'Potential', location: 'On Equipment', verification: 'Block', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Unit Heater - Steam': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Unit Heater - HHW': [
+    { energySource: 'Kinetic', deviceType: 'Rotating', location: 'On Equipment', verification: 'Rotating', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+  'Elevator - Hydraulic': [
+    { energySource: 'Gravity/Potential', deviceType: 'Potential', location: 'On Equipment', verification: 'Block', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+    { energySource: 'Hydraulic', deviceType: 'Hydraulic', location: 'On Equipment', verification: 'GaugeOnly', duplicate: 'No', quantity: 1, auto: true, noPhoto: true },
+  ],
+};
+
+function handleTiedToChange() {
+  const val = document.getElementById('equipTiedTo').value;
+  const nameGroup = document.getElementById('tiedToNameGroup');
+  if (val) {
+    nameGroup.style.display = 'flex';
+    document.getElementById('equipTiedToName').focus();
+  } else {
+    nameGroup.style.display = 'none';
+    document.getElementById('equipTiedToName').value = '';
+  }
+  autoSaveCurrent();
+}
+
+function handleEquipTypeChange() {
+  const val = document.getElementById('equipType').value;
+  const customGroup = document.getElementById('customEquipTypeGroup');
+  if (val === '** New Equipment Type **') {
+    customGroup.style.display = 'flex';
+    document.getElementById('equipTypeCustom').focus();
+  } else {
+    customGroup.style.display = 'none';
+    document.getElementById('equipTypeCustom').value = '';
+  }
+  // Fire the existing auto-source / auto-template logic
+  equipTypeChanged(val === '** New Equipment Type **' ? '' : val);
+  autoSaveCurrent();
+}
+
+function getEquipType() {
+  const sel = document.getElementById('equipType').value;
+  if (sel === '** New Equipment Type **') {
+    return document.getElementById('equipTypeCustom').value.trim();
+  }
+  return sel;
+}
+
+function getTemplate() {
+  const sel = document.getElementById('equipTemplate').value;
+  if (sel === '** New Template **') {
+    return document.getElementById('equipTemplateCustom').value.trim();
+  }
+  return sel;
+}
+
+function populateDropdown(selectEl, options, placeholder) {
+  selectEl.innerHTML = `<option value="">-- ${placeholder || 'Select'} --</option>`;
+  options.forEach(opt => {
+    const o = document.createElement('option');
+    o.value = opt;
+    o.textContent = opt;
+    selectEl.appendChild(o);
+  });
+}
+
+// ============================================================================
+// ENERGY SOURCE RENDERING
+// ============================================================================
+function getSourceColorClass(sourceType) {
+  if (!sourceType) return 'source-default';
+  const s = sourceType.toLowerCase();
+  if (s.startsWith('electrical')) return 'source-electrical';
+  if (s.includes('lps') || s.includes('mps') || s.includes('hps') || s.includes('condensate')) return 'source-steam';
+  if (s.includes('hhw') || s.includes('chw') || s.includes('dhw') || s.includes('dw ') ||
+      s.includes('condenser water') || s.includes('feedwater') || s.includes('glycol')) return 'source-water';
+  if (s.includes('gas') || s.includes('propane')) return 'source-gas';
+  return 'source-default';
+}
+
+function addSource() {
+  const index = sources.length;
+  sources.push({
+    energySource: '', deviceType: '', quantity: 1, location: '',
+    duplicate: 'No', verification: '', collapsed: false
+  });
+  renderSources();
+  setTimeout(() => {
+    const cards = document.querySelectorAll('.source-card');
+    if (cards[index]) cards[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 100);
+}
+
+function renderSources() {
+  const container = document.getElementById('sourcesContainer');
+  container.innerHTML = '';
+
+  sources.forEach((src, i) => {
+    const card = document.createElement('div');
+    card.className = 'source-card';
+
+    if (src.collapsed) {
+      const photoKey = `source_${i}`;
+      const photoData = photos[photoKey];
+      const hasThumbnail = photoData && photoData.thumbnail;
+      const autoBadge = src.auto ? '<span class="auto-badge">AUTO</span>' : '';
+      card.innerHTML = `
+        <div class="source-summary" onclick="expandSource(${i})">
+          <span class="source-number ${getSourceColorClass(src.energySource)}">${i + 1}</span>
+          <div class="source-summary-text">
+            <strong>${src.energySource || 'Empty source'}</strong>${autoBadge}
+            ${src.deviceType ? ' &mdash; ' + src.deviceType : ''}
+            ${src.location ? ' &mdash; ' + src.location : ''}
+          </div>
+          ${hasThumbnail ? `<img class="source-summary-photo" src="${photoData.thumbnail}">` : ''}
+          <span class="edit-icon">Edit</span>
+        </div>
+      `;
+    } else {
+      const isDuplicate = src.duplicate === 'Yes';
+      const isNoPhoto = src.noPhoto || isDuplicate || (SOURCE_DEFAULTS[src.energySource] && SOURCE_DEFAULTS[src.energySource].noPhoto);
+      const noPhotoMessage = isDuplicate
+        ? 'Duplicate "” photo captured on another source'
+        : 'No photo needed "” uses main equipment photo';
+      const autoBadge = src.auto ? ' <span class="auto-badge">AUTO</span>' : '';
+      card.innerHTML = `
+        <div class="source-card-header">
+          <h3><span class="source-number ${getSourceColorClass(src.energySource)}">${i + 1}</span> Energy Source #${i + 1}${autoBadge}</h3>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-danger btn-sm" onclick="removeSource(${i})">Remove</button>
+            <button class="btn btn-outline btn-sm" onclick="collapseSource(${i})">Done</button>
+          </div>
+        </div>
+        <div class="source-card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Energy Source</label>
+              <select onchange="updateSource(${i},'energySource',this.value)" id="src_energy_${i}">
+                <option value="">-- Select --</option>
+                ${DATA.energySources.map(s => `<option value="${s}" ${src.energySource===s?'selected':''}>${s}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Device Type</label>
+              <select onchange="updateSource(${i},'deviceType',this.value)" id="src_device_${i}">
+                <option value="">-- Select --</option>
+                ${DATA.deviceTypes.map(s => `<option value="${s}" ${src.deviceType===s?'selected':''}>${s}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Location</label>
+              <select onchange="updateSource(${i},'location',this.value)" id="src_loc_${i}">
+                <option value="">-- Select --</option>
+                ${DATA.locations.map(s => `<option value="${s}" ${src.location===s?'selected':''}>${s}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Verification</label>
+              <select onchange="updateSource(${i},'verification',this.value)" id="src_ver_${i}">
+                <option value="">-- Select --</option>
+                ${DATA.verificationTypes.map(s => `<option value="${s}" ${src.verification===s?'selected':''}>${s}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Quantity</label>
+              <select onchange="updateSource(${i},'quantity',parseInt(this.value))">
+                ${DATA.quantities.map(q => `<option value="${q}" ${src.quantity===q?'selected':''}>${q}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Duplicate</label>
+              <select onchange="updateSource(${i},'duplicate',this.value)">
+                ${DATA.duplicateOptions.map(d => `<option value="${d}" ${src.duplicate===d?'selected':''}>${d}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          ${isNoPhoto ? `<div style="padding:8px 0;color:var(--text-dim);font-size:13px;">${noPhotoMessage}</div>` : `
+          <div class="photo-section">
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--text-label);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">Source Photo</label>
+              <div class="photo-capture ${photos['source_'+i] && photos['source_'+i].thumbnail ?'has-photo':''}" onclick="takePhoto('source_${i}')" id="photo_source_${i}" style="position:relative;">
+                ${photos['source_'+i] && photos['source_'+i].thumbnail ?
+                  `<img src="${photos['source_'+i].thumbnail}">
+                   <span class="retake-badge">Tap to retake</span>
+                   <span style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.7);color:#4ab86a;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;">âœ“ Captured</span>` :
+                  `<span class="placeholder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M9 2h6l1 3H8l1-3z"/></svg>
+                    Tap to capture
+                  </span>`
+                }
+              </div>
+              <input type="file" accept="image/*" capture="environment" id="file_source_${i}" onchange="handlePhoto(this, 'source_${i}')">
+              ${photos['source_'+i] && photos['source_'+i].timestamp ?
+                `<div style="font-size:11px;color:var(--text-dim);margin-top:4px;text-align:center;">
+                  &#128247; ${new Date(photos['source_'+i].timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+                </div>` : ''}
+            </div>
+          </div>`}
+        </div>
+      `;
+    }
+    container.appendChild(card);
+  });
+
+  document.getElementById('sourceCountNum').textContent = sources.length;
+  autoSaveCurrent();
+}
+
+function updateSource(index, field, value) {
+  sources[index][field] = value;
+  if (field === 'energySource' && value && SOURCE_DEFAULTS[value]) {
+    const defaults = SOURCE_DEFAULTS[value];
+    if (!sources[index].deviceType) sources[index].deviceType = defaults.device;
+    if (!sources[index].location) sources[index].location = defaults.location;
+    if (!sources[index].verification) sources[index].verification = defaults.verification;
+    if (defaults.noPhoto) sources[index].noPhoto = true;
+    renderSources();
+    showToast(`Auto-filled defaults for ${value}`);
+    return;
+  }
+  if (field === 'energySource') {
+    const badge = document.querySelector(`#sourcesContainer .source-card:nth-child(${index+1}) .source-number`);
+    if (badge) badge.className = `source-number ${getSourceColorClass(value)}`;
+  }
+  if (field === 'duplicate') {
+    renderSources();
+    return;
+  }
+  autoSaveCurrent();
+}
+
+function collapseSource(i) { sources[i].collapsed = true; renderSources(); }
+function expandSource(i) { sources[i].collapsed = false; renderSources(); }
+
+function removeSource(index) {
+  if (confirm(`Remove Energy Source #${index + 1}?`)) {
+    delete photos[`source_${index}`];
+    for (let i = index + 1; i < sources.length; i++) {
+      if (photos[`source_${i}`]) {
+        photos[`source_${i-1}`] = photos[`source_${i}`];
+        delete photos[`source_${i}`];
+      }
+    }
+    sources.splice(index, 1);
+    renderSources();
+  }
+}
+
+// ============================================================================
+// PHOTO HANDLING - stores timestamp + tiny thumbnail, NOT full image
+// ============================================================================
+function takePhoto(slotId) {
+  document.getElementById(`file_${slotId}`).click();
+}
+
+// ============================================================================
+// IndexedDB — stores full-resolution photos as ArrayBuffer (NOT Blob)
+// iOS Safari has known issues with Blob storage in IndexedDB.
+// We store ArrayBuffer + metadata object instead, with base64 localStorage fallback.
+// ============================================================================
+let photoDB = null;
+let idbAvailable = true;
+
+function openPhotoDB() {
+  return new Promise((resolve, reject) => {
+    if (photoDB) { resolve(photoDB); return; }
+    try {
+      const req = indexedDB.open('loto_photos_v3', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('photos')) {
+          db.createObjectStore('photos');
+        }
+      };
+      req.onsuccess = (e) => { photoDB = e.target.result; resolve(photoDB); };
+      req.onerror = (e) => {
+        console.error('IDB open error', e);
+        idbAvailable = false;
+        reject(e);
+      };
+      req.onblocked = (e) => {
+        console.warn('IDB blocked', e);
+        idbAvailable = false;
+        reject(e);
+      };
+    } catch(e) {
+      console.error('IDB not available:', e);
+      idbAvailable = false;
+      reject(e);
+    }
+  });
+}
+
+// Store photo as {arrayBuffer, type, size} — NOT as a Blob (iOS Safari compat)
+function savePhotoToDB(key, arrayBuffer, mimeType) {
+  return openPhotoDB().then(db => new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction('photos', 'readwrite');
+      const store = tx.objectStore('photos');
+      store.put({ data: arrayBuffer, type: mimeType || 'image/jpeg', size: arrayBuffer.byteLength }, key);
+      tx.oncomplete = () => {
+        console.log('IDB save OK: ' + key + ' (' + (arrayBuffer.byteLength/1024).toFixed(0) + 'KB)');
+        resolve(true);
+      };
+      tx.onerror = (e) => {
+        console.error('IDB save FAIL: ' + key, e);
+        reject(e);
+      };
+      tx.onabort = (e) => {
+        console.error('IDB save ABORT: ' + key, e);
+        reject(e);
+      };
+    } catch(e) {
+      console.error('IDB transaction error: ' + key, e);
+      reject(e);
+    }
+  }));
+}
+
+// Retrieve photo — returns {data: ArrayBuffer, type: string, size: number} or null
+function getPhotoFromDB(key) {
+  return openPhotoDB().then(db => new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction('photos', 'readonly');
+      const req = tx.objectStore('photos').get(key);
+      req.onsuccess = () => {
+        const result = req.result;
+        if (!result) {
+          console.log('IDB get: ' + key + ' -> not found');
+          resolve(null);
+          return;
+        }
+        // Handle new format {data, type, size}
+        if (result.data && (result.data instanceof ArrayBuffer || result.data.byteLength !== undefined)) {
+          console.log('IDB get OK: ' + key + ' (' + (result.size/1024).toFixed(0) + 'KB)');
+          resolve(result);
+        } else if (result instanceof Blob) {
+          // Legacy v2.3: convert Blob to ArrayBuffer
+          console.log('IDB get: ' + key + ' -> legacy Blob, converting...');
+          const reader = new FileReader();
+          reader.onload = () => resolve({ data: reader.result, type: result.type, size: result.size });
+          reader.onerror = () => resolve(null);
+          reader.readAsArrayBuffer(result);
+        } else if (result instanceof ArrayBuffer) {
+          console.log('IDB get OK: ' + key + ' -> plain ArrayBuffer');
+          resolve({ data: result, type: 'image/jpeg', size: result.byteLength });
+        } else {
+          console.warn('IDB get: ' + key + ' -> unknown format', typeof result);
+          resolve(null);
+        }
+      };
+      req.onerror = (e) => {
+        console.error('IDB get FAIL: ' + key, e);
+        resolve(null);
+      };
+    } catch(e) {
+      console.error('IDB get error: ' + key, e);
+      resolve(null);
+    }
+  })).catch(e => {
+    console.error('IDB getPhoto catch: ' + key, e);
+    return null;
+  });
+}
+
+// Base64 fallback: store full photo as data URL in localStorage
+// Limited space (~5-10MB total) but always works on iOS Safari
+function savePhotoFallback(key, dataUrl) {
+  try {
+    localStorage.setItem('photo_full_' + key, dataUrl);
+    console.log('Fallback save OK: ' + key + ' (' + (dataUrl.length/1024).toFixed(0) + 'KB base64)');
+    return true;
+  } catch(e) {
+    console.error('Fallback save FAIL (storage full?): ' + key, e);
+    return false;
+  }
+}
+
+function getPhotoFallback(key) {
+  try {
+    const dataUrl = localStorage.getItem('photo_full_' + key);
+    if (dataUrl) {
+      console.log('Fallback get OK: ' + key);
+    } else {
+      console.log('Fallback get: ' + key + ' -> not found');
+    }
+    return dataUrl;
+  } catch(e) {
+    return null;
+  }
+}
+
+// Convert data URL to Uint8Array for ZIP export
+function dataUrlToUint8Array(dataUrl) {
+  const base64 = dataUrl.split(',')[1];
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function deletePhotoFromDB(key) {
+  try { localStorage.removeItem('photo_full_' + key); } catch(e) {}
+  return openPhotoDB().then(db => new Promise((resolve) => {
+    try {
+      const tx = db.transaction('photos', 'readwrite');
+      tx.objectStore('photos').delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch(e) { resolve(); }
+  })).catch(() => Promise.resolve());
+}
+
+function getAllPhotoKeys() {
+  return openPhotoDB().then(db => new Promise((resolve) => {
+    const tx = db.transaction('photos', 'readonly');
+    const req = tx.objectStore('photos').getAllKeys();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => resolve([]);
+  })).catch(() => []);
+}
+
+// Generate a unique photo key for IndexedDB
+function photoDBKey(equipName, slotId) {
+  const safeName = (equipName || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `${safeName}__${slotId}`;
+}
+
+function handlePhoto(input, slotId) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const timestamp = new Date().toISOString();
+  const equipName = document.getElementById('equipName').value.trim() || 'equipment';
+  const dbKey = photoDBKey(equipName, slotId);
+  const mimeType = file.type || 'image/jpeg';
+
+  // Strategy: Read file as ArrayBuffer for IndexedDB, AND as DataURL for fallback
+  // Both reads happen in parallel for speed
+
+  // Read 1: ArrayBuffer for IndexedDB storage
+  const fullReader = new FileReader();
+  fullReader.onload = function(e) {
+    const arrayBuffer = e.target.result;
+    if (idbAvailable) {
+      savePhotoToDB(dbKey, arrayBuffer, mimeType).then(() => {
+        console.log('Photo saved to IDB: ' + dbKey);
+      }).catch(err => {
+        console.error('IDB save failed, relying on fallback: ' + dbKey, err);
+        idbAvailable = false;
+      });
+    }
+  };
+  fullReader.readAsArrayBuffer(file);
+
+  // Read 2: DataURL for both thumbnail AND base64 fallback storage
+  const thumbReader = new FileReader();
+  thumbReader.onload = function(e) {
+    const fullDataUrl = e.target.result; // Full-res data URL
+
+    // Save full-res data URL as fallback (always, regardless of IDB status)
+    savePhotoFallback(dbKey, fullDataUrl);
+
+    // Create thumbnail for display
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const maxW = 80;
+      const scale = maxW / img.width;
+      canvas.width = maxW;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const thumbnail = canvas.toDataURL('image/jpeg', 0.4);
+
+      photos[slotId] = {
+        timestamp: timestamp,
+        thumbnail: thumbnail,
+        originalName: file.name || '',
+        fileType: mimeType,
+        dbKey: dbKey
+      };
+
+      const container = document.getElementById('photo_' + slotId);
+      container.classList.add('has-photo');
+      container.innerHTML = '<img src="' + thumbnail + '">' +
+        '<span class="retake-badge">Tap to retake</span>' +
+        '<span style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.7);color:#4ab86a;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;">\u2713 Saved</span>';
+      showToast('Photo captured & saved');
+      autoSaveCurrent();
+    };
+    img.src = fullDataUrl;
+  };
+  thumbReader.readAsDataURL(file);
+}
+
+// ============================================================================
+// SAVE & NEW - Core multi-equipment feature
+// ============================================================================
+function saveAndNew() {
+  const equipName = document.getElementById('equipName').value.trim();
+  if (!equipName) {
+    showToast('Enter equipment name first', true);
+    return;
+  }
+  if (sources.length === 0) {
+    showToast('Add at least one energy source', true);
+    return;
+  }
+
+  // Package current equipment into saved list
+  const entry = {
+    id: Date.now(),
+    equipType: getEquipType(),
+    equipName: equipName,
+    equipRoom: document.getElementById('equipRoom').value,
+    equipBuilding: document.getElementById('equipBuilding').value,
+    template: getTemplate(),
+    tiedTo: document.getElementById('equipTiedTo').value,
+    tiedToName: document.getElementById('equipTiedToName').value.trim(),
+    notes: document.getElementById('equipNotes').value.trim(),
+    sources: JSON.parse(JSON.stringify(sources)),
+    photoCount: Object.keys(photos).filter(k => photos[k] && photos[k].timestamp).length,
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    photos: Object.assign({}, photos)
+  };
+
+  savedEquipment.push(entry);
+  saveAll();
+  clearForm(false); // Don't confirm
+  renderSavedPanel();
+  updateHeaderBadge();
+  showToast(`âœ“ Saved "${equipName}" "” ${savedEquipment.length} total`);
+}
+
+function clearForm(confirm_first = true) {
+  if (confirm_first && (document.getElementById('equipName').value || sources.length > 0)) {
+    if (!confirm('Clear current form? Unsaved data will be lost.')) return;
+  }
+  sources = [];
+  photos = {};
+  document.getElementById('equipType').value = '';
+  document.getElementById('equipTypeCustom').value = '';
+  document.getElementById('customEquipTypeGroup').style.display = 'none';
+  document.getElementById('equipName').value = '';
+  document.getElementById('equipRoom').value = '';
+  document.getElementById('equipBuilding').value = '';
+  document.getElementById('equipTemplate').value = '';
+  document.getElementById('equipTemplateCustom').value = '';
+  document.getElementById('customTemplateGroup').style.display = 'none';
+  document.getElementById('equipTiedTo').value = '';
+  document.getElementById('equipTiedToName').value = '';
+  document.getElementById('tiedToNameGroup').style.display = 'none';
+  document.getElementById('equipNotes').value = '';
+  ['equip_main','equip_dataplate','equip_ee'].forEach(slot => {
+    const container = document.getElementById(`photo_${slot}`);
+    container.classList.remove('has-photo');
+    container.innerHTML = `<span class="placeholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M9 2h6l1 3H8l1-3z"/></svg>
+      Tap to capture
+    </span>`;
+  });
+  renderSources();
+  localStorage.removeItem('loto_current');
+  window.scrollTo(0, 0);
+}
+
+// ============================================================================
+// SAVED EQUIPMENT PANEL
+// ============================================================================
+function renderSavedPanel() {
+  const body = document.getElementById('savedPanelBody');
+  const badge = document.getElementById('savedCountBadge');
+  badge.textContent = savedEquipment.length;
+
+  if (savedEquipment.length === 0) {
+    body.innerHTML = '<div class="saved-empty">No equipment saved yet. Fill out the form and tap "Save & New" to add.</div>';
+    return;
+  }
+
+  body.innerHTML = savedEquipment.map((entry, i) => {
+    const photoCount = entry.photos ? Object.keys(entry.photos).filter(k => entry.photos[k] && entry.photos[k].timestamp).length : 0;
+    return `
+    <div class="saved-item">
+      <div class="saved-item-info">
+        <div class="saved-item-name">${entry.equipName}</div>
+        <div class="saved-item-detail">
+          ${entry.equipType || 'No type'} "¢ ${entry.template || 'No template'}
+          "¢ ${entry.sources.length} source${entry.sources.length !== 1 ? 's' : ''}
+          "¢ ${photoCount} &#128247;
+          "¢ ${entry.equipBuilding || '?'} ${entry.equipRoom || ''}
+          "¢ ${entry.timestamp}
+        </div>
+      </div>
+      <div class="saved-item-actions">
+        <button class="btn btn-outline btn-sm" onclick="editSaved(${i})" style="padding:5px 10px;font-size:12px;">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSaved(${i})" style="padding:5px 10px;font-size:12px;">âœ•</button>
+      </div>
+    </div>
+  `}).join('');
+}
+
+function toggleSavedPanel() {
+  savedPanelOpen = !savedPanelOpen;
+  document.getElementById('savedPanelBody').classList.toggle('collapsed', !savedPanelOpen);
+  document.getElementById('savedToggle').textContent = savedPanelOpen ? '&#9650; Hide' : '&#9660; Show';
+}
+
+function showSavedList() {
+  if (!savedPanelOpen) toggleSavedPanel();
+  document.getElementById('savedPanel').scrollIntoView({ behavior: 'smooth' });
+}
+
+function deleteSaved(index) {
+  const name = savedEquipment[index].equipName;
+  if (confirm(`Delete "${name}" from saved list?`)) {
+    savedEquipment.splice(index, 1);
+    saveAll();
+    renderSavedPanel();
+    updateHeaderBadge();
+    showToast(`Deleted "${name}"`);
+  }
+}
+
+function editSaved(index) {
+  // Check if current form has unsaved data
+  const currentName = document.getElementById('equipName').value.trim();
+  if (currentName || sources.length > 0) {
+    if (!confirm(`Current form has unsaved data ("${currentName || 'unnamed'}"). Discard and edit "${savedEquipment[index].equipName}"?`)) return;
+  }
+
+  // Load saved entry into form
+  const entry = savedEquipment[index];
+  
+  // Restore equipment type "” check if it's a custom value
+  if (entry.equipType && !DATA.equipmentTypes.includes(entry.equipType)) {
+    document.getElementById('equipType').value = '** New Equipment Type **';
+    document.getElementById('equipTypeCustom').value = entry.equipType;
+    document.getElementById('customEquipTypeGroup').style.display = 'flex';
+  } else {
+    document.getElementById('equipType').value = entry.equipType || '';
+    document.getElementById('equipTypeCustom').value = '';
+    document.getElementById('customEquipTypeGroup').style.display = 'none';
+  }
+  document.getElementById('equipName').value = entry.equipName || '';
+  document.getElementById('equipRoom').value = entry.equipRoom || '';
+  document.getElementById('equipBuilding').value = entry.equipBuilding || '';
+  document.getElementById('equipTiedTo').value = entry.tiedTo || '';
+  
+  // Restore tied-to equipment name
+  if (entry.tiedTo) {
+    document.getElementById('tiedToNameGroup').style.display = 'flex';
+    document.getElementById('equipTiedToName').value = entry.tiedToName || '';
+  } else {
+    document.getElementById('tiedToNameGroup').style.display = 'none';
+    document.getElementById('equipTiedToName').value = '';
+  }
+  
+  // Restore notes
+  document.getElementById('equipNotes').value = entry.notes || '';
+  
+  // Restore template "” check if it's a custom value
+  const templateSel = document.getElementById('equipTemplate');
+  if (entry.template && !DATA.templates.includes(entry.template)) {
+    templateSel.value = '** New Template **';
+    document.getElementById('equipTemplateCustom').value = entry.template;
+    document.getElementById('customTemplateGroup').style.display = 'flex';
+  } else {
+    templateSel.value = entry.template || '';
+    document.getElementById('equipTemplateCustom').value = '';
+    document.getElementById('customTemplateGroup').style.display = 'none';
+  }
+  
+  sources = JSON.parse(JSON.stringify(entry.sources));
+  photos = Object.assign({}, entry.photos || {});
+
+  // Restore equipment photos
+  ['equip_main','equip_dataplate','equip_ee'].forEach(slot => {
+    const container = document.getElementById(`photo_${slot}`);
+    if (photos[slot] && photos[slot].thumbnail) {
+      container.classList.add('has-photo');
+      container.innerHTML = `<img src="${photos[slot].thumbnail}">
+        <span class="retake-badge">Tap to retake</span>
+        <span style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.7);color:#4ab86a;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;">âœ“ Captured</span>`;
+    } else {
+      container.classList.remove('has-photo');
+      container.innerHTML = `<span class="placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M9 2h6l1 3H8l1-3z"/></svg>
+        Tap to capture
+      </span>`;
+    }
+  });
+
+  // Remove from saved list (it's now "in progress" again)
+  savedEquipment.splice(index, 1);
+  saveAll();
+  renderSavedPanel();
+  renderSources();
+  updateHeaderBadge();
+
+  // Scroll to form
+  document.querySelector('.equipment-section').scrollIntoView({ behavior: 'smooth' });
+  showToast(`Editing "${entry.equipName}"`);
+}
+
+function updateHeaderBadge() {
+  const badge = document.getElementById('headerBadge');
+  if (savedEquipment.length > 0) {
+    badge.textContent = `${savedEquipment.length} saved`;
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ============================================================================
+// EXPORT ALL
+// ============================================================================
+async function exportAll() {
+  // Include current form if it has data
+  let allEntries = [...savedEquipment];
+  const currentName = document.getElementById('equipName').value.trim();
+
+  if (currentName && sources.length > 0) {
+    allEntries.push({
+      equipType: getEquipType(),
+      equipName: currentName,
+      equipRoom: document.getElementById('equipRoom').value,
+      equipBuilding: document.getElementById('equipBuilding').value,
+      template: getTemplate(),
+      tiedTo: document.getElementById('equipTiedTo').value,
+      tiedToName: document.getElementById('equipTiedToName').value.trim(),
+      notes: document.getElementById('equipNotes').value.trim(),
+      sources: sources,
+      photos: photos
+    });
+  }
+
+  if (allEntries.length === 0) {
+    showToast('Nothing to export', true);
+    return;
+  }
+
+  showToast('Building export...', false);
+  console.log('=== EXPORT START ===');
+  console.log('Entries to export: ' + allEntries.length);
+
+  // Build CSV
+  let csv = 'Equipment Type,Equipment Name,Room,Building,Template,Tied To,Tied To Equipment Name,Notes,Source #,Energy Source,Device Type,Quantity,Location,Duplicate,Verification,Photo Filename,Main Photo Filename,DataPlate Photo Filename,EE Photo Filename\n';
+
+  const zip = new JSZip();
+  const photosFolder = zip.folder('photos');
+  let photoCount = 0;
+  let idbHits = 0;
+  let fallbackHits = 0;
+  let misses = 0;
+
+  // Helper: get photo data as Uint8Array from IDB or fallback
+  async function getPhotoData(dbKey, mimeType) {
+    // Try IndexedDB first
+    if (idbAvailable && dbKey) {
+      try {
+        const idbResult = await getPhotoFromDB(dbKey);
+        if (idbResult && idbResult.data) {
+          idbHits++;
+          return { bytes: new Uint8Array(idbResult.data), type: idbResult.type || mimeType };
+        }
+      } catch(e) {
+        console.warn('IDB retrieval failed for ' + dbKey + ', trying fallback');
+      }
+    }
+
+    // Try base64 fallback
+    if (dbKey) {
+      const dataUrl = getPhotoFallback(dbKey);
+      if (dataUrl) {
+        fallbackHits++;
+        const type = dataUrl.split(';')[0].split(':')[1] || mimeType;
+        return { bytes: dataUrlToUint8Array(dataUrl), type: type };
+      }
+    }
+
+    misses++;
+    console.warn('Photo not found in IDB or fallback: ' + dbKey);
+    return null;
+  }
+
+  for (const entry of allEntries) {
+    const safeName = (entry.equipName || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_');
+    console.log('--- Exporting: ' + entry.equipName + ' ---');
+    console.log('  Photos keys: ' + JSON.stringify(Object.keys(entry.photos || {})));
+
+    // Debug: show all photo slot info
+    for (const [k, v] of Object.entries(entry.photos || {})) {
+      console.log('  ' + k + ': dbKey=' + (v.dbKey || 'NONE') + ', hasThumbnail=' + (v.thumbnail ? 'yes' : 'no'));
+    }
+
+    let mainFile = '', dpFile = '', eeFile = '';
+
+    // Process equipment photos (main, dataplate, EE)
+    for (const [slotId, label] of [['equip_main','main'], ['equip_dataplate','dataplate'], ['equip_ee','ee']]) {
+      if (entry.photos && entry.photos[slotId] && entry.photos[slotId].dbKey) {
+        const photoData = await getPhotoData(entry.photos[slotId].dbKey, entry.photos[slotId].fileType || 'image/jpeg');
+        if (photoData) {
+          const ext = (photoData.type || '').includes('png') ? '.png' : '.jpg';
+          const filename = safeName + '_' + label + ext;
+          photosFolder.file(filename, photoData.bytes);
+          if (label === 'main') mainFile = filename;
+          if (label === 'dataplate') dpFile = filename;
+          if (label === 'ee') eeFile = filename;
+          photoCount++;
+          console.log('  Added photo: ' + filename);
+        }
+      }
+    }
+
+    // Process sources - build CSV rows
+    entry.sources.forEach((src, i) => {
+      const photoKey = 'source_' + i;
+      let srcPhotoFile = '';
+
+      if (entry.photos && entry.photos[photoKey] && entry.photos[photoKey].dbKey) {
+        const ext = (entry.photos[photoKey].fileType || 'image/jpeg').includes('png') ? '.png' : '.jpg';
+        srcPhotoFile = safeName + '_source' + (i+1) + ext;
+      }
+
+      csv += [
+        quote(entry.equipType), quote(entry.equipName),
+        quote(entry.equipRoom), quote(entry.equipBuilding),
+        quote(entry.template || ''), quote(entry.tiedTo || ''),
+        quote(entry.tiedToName || ''), quote(entry.notes || ''),
+        i + 1, quote(src.energySource), quote(src.deviceType), src.quantity,
+        quote(src.location), src.duplicate, quote(src.verification),
+        quote(srcPhotoFile), quote(mainFile), quote(dpFile), quote(eeFile)
+      ].join(',') + '\n';
+    });
+
+    // Fetch source photos and add to ZIP
+    for (let i = 0; i < entry.sources.length; i++) {
+      const photoKey = 'source_' + i;
+      if (entry.photos && entry.photos[photoKey] && entry.photos[photoKey].dbKey) {
+        const photoData = await getPhotoData(entry.photos[photoKey].dbKey, entry.photos[photoKey].fileType || 'image/jpeg');
+        if (photoData) {
+          const ext = (photoData.type || '').includes('png') ? '.png' : '.jpg';
+          photosFolder.file(safeName + '_source' + (i+1) + ext, photoData.bytes);
+          photoCount++;
+          console.log('  Added source photo: source_' + (i+1));
+        }
+      }
+    }
+  }
+
+  console.log('=== EXPORT SUMMARY ===');
+  console.log('Total photos: ' + photoCount + ' (IDB: ' + idbHits + ', Fallback: ' + fallbackHits + ', Missing: ' + misses + ')');
+
+  // Add CSV to ZIP
+  const dateStamp = getDateStamp();
+  zip.file('LOTO_FieldData_' + dateStamp + '.csv', csv);
+
+  // Generate and download ZIP
+  try {
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'LOTO_Export_' + dateStamp + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Exported ' + allEntries.length + ' equipment, ' + photoCount + ' photos');
+    console.log('ZIP downloaded: LOTO_Export_' + dateStamp + '.zip');
+  } catch(e) {
+    console.error('ZIP export error:', e);
+    showToast('Export error - try again', true);
+  }
+}
+
+function quote(val) {
+  if (!val) return '';
+  val = String(val);
+  if (val.includes(',') || val.includes('"')) return `"${val.replace(/"/g, '""')}"`;
+  return val;
+}
+
+function getDateStamp() {
+  const d = new Date();
+  return `${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}${d.getFullYear().toString().slice(2)}`;
+}
+
+// ============================================================================
+// PERSISTENCE - survives close/reopen
+// ============================================================================
+function checkStorage() {
+  try {
+    let totalBytes = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith('loto_')) {
+        totalBytes += localStorage.getItem(key).length * 2; // UTF-16 = 2 bytes per char
+      }
+    }
+    const maxBytes = 5 * 1024 * 1024; // Conservative 5MB estimate
+    const pct = Math.round((totalBytes / maxBytes) * 100);
+    const indicator = document.getElementById('storageIndicator');
+    const label = document.getElementById('storageUsed');
+
+    if (pct >= 50) {
+      indicator.style.display = 'block';
+      label.textContent = pct;
+
+      if (pct >= 90) {
+        indicator.style.color = '#d94a4a';
+        showToast('âš ï¸ Storage almost full "” export now!', true);
+      } else if (pct >= 75) {
+        indicator.style.color = '#d9a84a';
+        showToast('Storage getting full "” consider exporting', true);
+      } else {
+        indicator.style.color = 'var(--text-dim)';
+      }
+    } else {
+      indicator.style.display = 'none';
+    }
+  } catch(e) {}
+}
+
+function autoSaveCurrent() {
+  try {
+    const state = {
+      equipType: document.getElementById('equipType').value,
+      equipTypeCustom: document.getElementById('equipTypeCustom').value.trim(),
+      equipName: document.getElementById('equipName').value,
+      equipRoom: document.getElementById('equipRoom').value,
+      equipBuilding: document.getElementById('equipBuilding').value,
+      template: getTemplate(),
+      tiedTo: document.getElementById('equipTiedTo').value,
+      tiedToName: document.getElementById('equipTiedToName').value.trim(),
+      notes: document.getElementById('equipNotes').value.trim(),
+      sources: sources,
+      photos: photos
+    };
+    localStorage.setItem('loto_current', JSON.stringify(state));
+    checkStorage();
+  } catch(e) {
+    showToast('Storage issue "” export soon', true);
+  }
+}
+
+function saveAll() {
+  try {
+    // Thumbnails are tiny (~2-5KB each), safe to store inline
+    localStorage.setItem('loto_saved', JSON.stringify(savedEquipment));
+    checkStorage();
+  } catch(e) {
+    showToast('Storage error "” export soon!', true);
+  }
+}
+
+function loadAll() {
+  // Load saved equipment list
+  try {
+    const saved = localStorage.getItem('loto_saved');
+    if (saved) {
+      savedEquipment = JSON.parse(saved);
+    }
+  } catch(e) {}
+
+  // Load current work-in-progress
+  try {
+    const current = localStorage.getItem('loto_current');
+    if (current) {
+      const state = JSON.parse(current);
+      document.getElementById('equipType').value = state.equipType || '';
+      
+      // Restore custom equipment type
+      if (state.equipType === '** New Equipment Type **' && state.equipTypeCustom) {
+        document.getElementById('customEquipTypeGroup').style.display = 'flex';
+        document.getElementById('equipTypeCustom').value = state.equipTypeCustom;
+      }
+      document.getElementById('equipName').value = state.equipName || '';
+      document.getElementById('equipRoom').value = state.equipRoom || '';
+      document.getElementById('equipBuilding').value = state.equipBuilding || '';
+      document.getElementById('equipTiedTo').value = state.tiedTo || '';
+      
+      // Restore tied-to equipment name
+      if (state.tiedTo) {
+        document.getElementById('tiedToNameGroup').style.display = 'flex';
+        document.getElementById('equipTiedToName').value = state.tiedToName || '';
+      }
+      
+      // Restore notes
+      document.getElementById('equipNotes').value = state.notes || '';
+      
+      // Restore template
+      if (state.template) {
+        const templateSel = document.getElementById('equipTemplate');
+        if (!DATA.templates.includes(state.template)) {
+          templateSel.value = '** New Template **';
+          document.getElementById('equipTemplateCustom').value = state.template;
+          document.getElementById('customTemplateGroup').style.display = 'flex';
+        } else {
+          templateSel.value = state.template;
+        }
+      }
+      
+      sources = state.sources || [];
+      photos = state.photos || {};
+
+      // Restore equipment photos
+      ['equip_main','equip_dataplate','equip_ee'].forEach(slot => {
+        if (photos[slot] && photos[slot].thumbnail) {
+          const container = document.getElementById(`photo_${slot}`);
+          container.classList.add('has-photo');
+          container.innerHTML = `<img src="${photos[slot].thumbnail}">
+            <span class="retake-badge">Tap to retake</span>
+            <span style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.7);color:#4ab86a;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;">âœ“ Captured</span>`;
+        }
+      });
+
+      if (state.photosDropped) {
+        showToast('Previous session photos were not saved (storage full)', true);
+      }
+    }
+  } catch(e) {}
+}
+
+function clearAllData() {
+  if (confirm('Delete ALL saved equipment and clear the form? This cannot be undone.')) {
+    // Clear all localStorage keys
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith('loto_')) keys.push(key);
+    }
+    keys.forEach(k => localStorage.removeItem(k));
+
+    savedEquipment = [];
+    clearForm(false);
+    renderSavedPanel();
+    updateHeaderBadge();
+    showToast('All data cleared');
+  }
+}
+
+// ============================================================================
+// TOAST
+// ============================================================================
+function showToast(msg, isWarning = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isWarning ? ' toast-warning' : '');
+  setTimeout(() => t.className = 'toast', 2000);
+}
+
+// ============================================================================
+// INIT
+// ============================================================================
+init();
+</script>
+
+</body>
+</html>
